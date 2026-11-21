@@ -1,0 +1,97 @@
+# weapons + pad 2: human P2 moves/turns/fires on pad 2; every weapon fires and uses ammo;
+# tapping button 2 cycles weapons
+symbols build/game.noi
+run 60
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+# P2's pad picks its skin and makes P2 human
+tap p2right
+run 5
+expect opt_cpu == 0 w1
+expect opt_skin+1 == 4 w1
+poke menu_sel 5 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+expect pl+93 == 0 w1
+# park both players apart in the open south-east of OUTPOST ALPHA
+poke pl+0 0x1780
+poke pl+2 0x1180
+poke pl+4 0
+poke pl+47 0x0580
+poke pl+49 0x0E80
+poke pl+51 0
+run 10
+# pad 2: walk forward (east) and turn
+hold p2up
+run 60
+hold none
+run 4
+expect pl+47 > 0x0600
+hold p2right
+run 30
+hold none
+run 4
+expect pl+51 > 0
+# give P1 every weapon with ammo
+poke pl+9 0x7F w1
+poke pl+11 50 w1
+poke pl+12 50 w1
+poke pl+13 9 w1
+poke pl+14 9 w1
+poke pl+15 50 w1
+poke pl+16 9 w1
+poke pl+4 512
+poke pl+8 1 w1
+poke pl+34 63 w1
+run 10
+hold 1
+run 30
+hold none
+expect pl+11 < 50 w1
+poke pl+8 2 w1
+poke pl+34 63 w1
+run 15
+hold 1
+run 6
+screenshot shots/w_plasma.ppm
+run 20
+hold none
+expect pl+12 < 50 w1
+poke pl+8 3 w1
+poke pl+34 63 w1
+run 15
+hold 1
+run 8
+hold none
+run 6
+screenshot shots/w_gren.ppm
+expect pl+13 < 9 w1
+run 120
+poke pl+8 5 w1
+poke pl+34 63 w1
+run 15
+hold 1
+run 14
+screenshot shots/w_flame.ppm
+run 20
+hold none
+expect pl+15 < 50 w1
+poke pl+8 6 w1
+poke pl+34 63 w1
+run 15
+hold 1
+run 5
+screenshot shots/w_rail.ppm
+run 10
+hold none
+expect pl+16 < 9 w1
+run 40
+# tap button 2 -> next weapon (rail -> blaster wraps)
+tap 2
+run 6
+expect pl+8 == 0 w1
+tap 2
+run 6
+expect pl+8 == 1 w1

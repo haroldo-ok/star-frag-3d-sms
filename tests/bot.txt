@@ -1,0 +1,25 @@
+# bot: P1 idles; the CPU opponent should find and frag them
+symbols build/game.noi
+run 60
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+poke menu_sel 5 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+run 1500
+screenshot shots/bot1.ppm
+print pl+6 w1
+print pl+64 s8
+print pl+47
+print pl+49
+print pl+0
+print pl+2
+run 2000
+print pl+6 w1
+print pl+64 s8
+print pl+55 w1
+print pl+17 s8
+screenshot shots/bot2.ppm
+expect pl+64 >= 1 s8

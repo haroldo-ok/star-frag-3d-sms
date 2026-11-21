@@ -1,0 +1,49 @@
+# showcase screenshots (not a pass/fail test)
+symbols build/game.noi
+run 60
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+poke level 1 w1
+poke opt_skin 2 w1
+poke opt_skin+1 4 w1
+poke menu_sel 5 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+poke opt_cpu 0 w1
+poke pl+93 0 w1
+poke pl+0 0x0280
+poke pl+2 0x0880
+poke pl+4 0
+poke pl+47 0x0580
+poke pl+49 0x0880
+poke pl+51 512
+poke pl+9 0x7F w1
+poke pl+12 40 w1
+poke pl+8 2 w1
+poke pl+34 63 w1
+poke pl+56 0x7F w1
+poke pl+62 40 w1
+poke pl+55 5 w1
+poke pl+81 63 w1
+run 30
+hold 1+p21
+run 9
+screenshot shots/show1.ppm
+run 10
+hold none
+run 30
+poke pl+8 4 w1
+poke pl+14 9 w1
+poke pl+34 63 w1
+poke pl+55 6 w1
+poke pl+63 9 w1
+poke pl+81 63 w1
+run 20
+hold 1
+run 10
+screenshot shots/show2.ppm
+hold none
+run 8
+screenshot shots/show3.ppm

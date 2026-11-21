@@ -1,0 +1,27 @@
+# walkout: controller only - P1 leaves its spawn, turns, and walks a few tiles
+symbols build/game.noi
+run 60
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+poke menu_sel 5 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+poke opt_cpu 0 w1
+poke pl+93 0 w1
+run 30
+print pl+0
+print pl+2
+hold up
+run 240
+hold right
+run 60
+hold up
+run 240
+hold none
+run 20
+print pl+0
+print pl+2
+screenshot shots/walkout.ppm
+expect pl+0 < 7500

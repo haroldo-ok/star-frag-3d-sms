@@ -1,0 +1,53 @@
+# items: medkit / armor / weapon pickup, item respawn, overdrive doubles damage
+symbols build/game.noi
+run 60
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+poke menu_sel 5 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+# P2 out of the way (human, idle)
+poke opt_cpu 0 w1
+poke pl+93 0 w1
+poke pl+47 0x1C80
+poke pl+49 0x1380
+# P1 hurt, walks onto the medkit at (27,3) from the west
+poke pl+6 40 w1
+poke pl+0 0x1980
+poke pl+2 0x0380
+poke pl+4 0
+run 10
+hold up
+run 60
+hold none
+run 4
+expect pl+6 == 65 w1
+# armor at (21,2)
+poke pl+0 0x1580
+poke pl+2 0x0280
+run 20
+expect pl+7 == 50 w1
+# rocket launcher at (21,7): becomes the current weapon with 8 rockets
+poke pl+0 0x1580
+poke pl+2 0x0780
+run 20
+expect pl+8 == 4 w1
+expect pl+14 == 8 w1
+expect pl+9 == 17 w1
+screenshot shots/items.ppm
+# the medkit comes back after ~10 s
+poke pl+0 0x1080
+poke pl+2 0x0580
+run 700
+poke pl+6 50 w1
+poke pl+0 0x1B80
+poke pl+2 0x0380
+run 20
+expect pl+6 == 75 w1
+# overdrive at (6,11)
+poke pl+0 0x0680
+poke pl+2 0x0B80
+run 20
+expect pl+24 > 1000

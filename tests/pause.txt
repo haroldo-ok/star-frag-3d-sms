@@ -1,0 +1,27 @@
+# pause + sound: the console PAUSE button freezes play; the PSG is written
+symbols build/game.noi
+run 60
+psglog /tmp/psg.txt
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+poke menu_sel 5 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+run 60
+hold 1
+run 30
+hold none
+pause
+run 30
+screenshot shots/paused.ppm
+print pl+0
+hold up
+run 60
+hold none
+print pl+0
+pause
+run 30
+psgstop
+expect game_state == 2 w1

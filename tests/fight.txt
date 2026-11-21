@@ -1,0 +1,51 @@
+# fight: P1 shoots P2 with the blaster, then with rockets; frags count
+symbols build/game.noi
+run 60
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+poke menu_sel 2 w1
+run 2
+tap right
+run 5
+poke menu_sel 5 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+expect pl+93 == 0 w1
+# P1 at (4.5,3.5) facing east, P2 at (9.5,3.5) facing west (open corridor row 3)
+poke pl+0 0x0480
+poke pl+2 0x0380
+poke pl+4 0
+poke pl+47 0x0980
+poke pl+49 0x0380
+poke pl+51 512
+run 30
+screenshot shots/f0.ppm
+hold 1
+run 40
+hold none
+run 10
+print pl+53 w1
+expect pl+53 < 100 w1
+screenshot shots/f1.ppm
+# give P1 the rocket launcher
+poke pl+9 0x11 w1
+poke pl+14 10 w1
+poke pl+8 4 w1
+poke pl+34 63 w1
+run 20
+hold 1
+run 15
+hold none
+run 4
+screenshot shots/f2.ppm
+run 40
+print pl+53 w1
+print pl+17 s8
+print pl+70 w1
+screenshot shots/f3.ppm
+run 260
+print pl+17 s8
+print pl+70 w1
+expect pl+17 >= 1 s8
