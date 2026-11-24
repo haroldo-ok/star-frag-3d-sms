@@ -16,7 +16,12 @@ u16 approx_dist(s16 dx, s16 dy);
 void select_best_weapon(u8 p);
 
 static u16 last_x, last_y;
-static u8 stuck_t, turn_t, turn_dir, strafe_t, think, vis, react;
+static u8 stuck_t, turn_t, turn_dir, strafe_t, think, vis, seen_at, seen;
+
+/*                                 EASY NORMAL HARD */
+static const u8 skill_react[3] = { 50,  22,    8 };     /* frames from first sight to firing */
+static const u8 skill_cone[3]  = { 0x14, 0x30, 0x48 };  /* how far off-centre it will shoot */
+static const u8 skill_strafe[3] = { 0, 1, 1 };
 
 /* Navigation: a breadth-first distance field toward the target cell, in the
  * free RAM page under the ray caster (arenas are at most 32 x 22 cells). */
@@ -72,7 +77,7 @@ static u8 steer(Player *P, u16 x, u16 y, u8 *ahead)
     pj_dx = x - P->x; pj_dy = y - P->y;
     project();
     depth = pj_depth; lat = pj_lat;
-    *ahead = depth > 0 && (lat < 0 ? -lat : lat) < 0x30 + (depth >> 3);
+    *ahead = depth > 0 && (lat < 0 ? -lat : lat) < skill_cone[bot_skill] + (depth >> 3);
     if (depth <= 0) return lat >= 0 ? K_RIGHT : K_LEFT;
     if (lat > (depth >> 4) + 8) return K_RIGHT;
     if (lat < -(depth >> 4) - 8) return K_LEFT;
@@ -94,15 +99,16 @@ u8 bot_keys(u8 p)
     d = approx_dist((s16)(O->x - P->x), (s16)(O->y - P->y));
     if (vis) {
         keys = steer(P, O->x, O->y, &ahead);
-        if (react < 20) react++;
-        if (ahead && react > 12) keys |= K_1;
+        if (!seen) { seen = 1; seen_at = vbl_count; }
+        if (seen == 1 && (u8)(vbl_count - seen_at) > skill_react[bot_skill]) seen = 2;
+        if (ahead && seen == 2) keys |= K_1;
         if (d > 0x380) keys |= K_UP;
         else if (d < 0x180 && P->weapon != W_FLAME) keys |= K_DOWN;
         else if (P->weapon == W_FLAME) keys |= K_UP;
         if (++strafe_t > 90) strafe_t = 0;
-        if (ahead && strafe_t > 50) keys = (keys & ~(K_LEFT | K_RIGHT)) | K_2 | (strafe_t > 70 ? K_LEFT : K_RIGHT);
+        if (skill_strafe[bot_skill] && ahead && strafe_t > 50) keys = (keys & ~(K_LEFT | K_RIGHT)) | K_2 | (strafe_t > 70 ? K_LEFT : K_RIGHT);
     } else {
-        react = 0;
+        seen = 0;
         /* hunt: follow the distance field toward the opponent (or its last
            position while it is dead) */
         u16 t = cell_of(O->x, O->y);

@@ -194,6 +194,11 @@ _out_column::
 	ret	z
 	ld	b,a
 	ld	c,#0xBE
+	ld	a,(_oc_tc)
+	cp	#15
+	jr	z,5$
+	cp	#16
+	jr	z,6$
 3$:	ld	a,(de)
 	ld	l,a
 	ld	h,#0xD8
@@ -213,6 +218,60 @@ _out_column::
 	out	(c),a
 	djnz	3$
 	ret
+
+; tile column 15 (right edge of player 1's view): pixel 6 grey (4), pixel 7 black (2)
+5$:	ld	a,(de)
+	ld	l,a
+	ld	h,#0xD8
+	ld	a,(hl)
+	and	#0xFC
+	out	(c),a
+	inc	h
+	ld	a,(hl)
+	inc	e
+	and	#0xFC
+	or	#0x01
+	out	(c),a
+	inc	h
+	ld	a,(hl)
+	and	#0xFC
+	or	#0x02
+	out	(c),a
+	inc	h
+	ld	a,(hl)
+	and	#0xFC
+	out	(c),a
+	djnz	5$
+	ret
+
+; tile column 16 (left edge of player 2's view): pixel 0 black (2), pixel 1 grey (4)
+6$:	ld	a,(de)
+	ld	l,a
+	ld	h,#0xD8
+	ld	a,(hl)
+	and	#0x3F
+	out	(c),a
+	inc	h
+	ld	a,(hl)
+	inc	e
+	and	#0x3F
+	or	#0x80
+	out	(c),a
+	inc	h
+	ld	a,(hl)
+	and	#0x3F
+	or	#0x40
+	out	(c),a
+	inc	h
+	ld	a,(hl)
+	and	#0x3F
+	out	(c),a
+	djnz	6$
+	ret
+
+	.area _DATA
+_oc_tc::	.ds 1		; tile column being uploaded (set by draw_view)
+	.area _CODE
 
 ; ---------------------------------------------------------------- sprite projection
 	.area _DATA

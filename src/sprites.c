@@ -224,8 +224,8 @@ void build_view(u8 v)
     Obj *o;
     nvis[v] = 0;
     px = V->x; py = V->y;
-    /* the opponent */
-    {
+    /* the opponent (blinking while its respawn shield is up) */
+    if (!shield[v ^ 1] || (frame_no & 1)) {
         u8 rot = rotation(O, V->x, V->y);
         set_proj_angle(V->a);
         cv = v; ch = PLAYER_H; cz = 0; cg = player_graphic(O, rot);
@@ -251,7 +251,8 @@ void build_view(u8 v)
 void emit_view(u8 v)
 {
     u8 i, n, lo_ray = v * VRAYS, hi_ray = v * VRAYS + VRAYS - 1;
-    s16 x0 = v * 128;
+    /* a piece must lie inside its own window and off the 4 px divider bar */
+    s16 xlo = v ? 130 : 0, xhi = v ? 248 : 118;
     for (i = 0; i < nvis[v]; i++) {
         u8 lvl = vis_lvl[v][i], g = vis_g[v][i], t;
         const SprImg *img;
@@ -269,7 +270,7 @@ void emit_view(u8 v)
             s16 x = left + (c & 15) * 8;
             s16 y = top + (c >> 4) * 16;
             s16 ri;
-            if (x < x0 || x > x0 + 120) continue;
+            if (x < xlo || x > xhi) continue;
             if (y >= VIEW_BOT || y < VIEW_TY * 8 - 15) continue;
             ri = (x + 4) >> 2;
             if (ri < lo_ray) ri = lo_ray;

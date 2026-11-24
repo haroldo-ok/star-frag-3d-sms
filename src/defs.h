@@ -36,9 +36,11 @@ typedef struct {
 /* sprite area: SAT tile n == BG tile 256+n */
 #define SAT_WEAPON  0              /* player*16 + frame*8 */
 #define SAT_FACE    32             /* player*12 */
-#define SAT_FRAME   56
-#define SAT_CACHE   76
-#define CACHE_PAIRS 58
+#define SAT_FRAME   56             /* frame tiles past 10, then the divider sky tiles */
+#define SAT_ARROW   69             /* 4 hit-direction arrows: left, right, front, back */
+#define SAT_RADAR   73             /* player*9: 3 x 3 radar tiles */
+#define SAT_CACHE   92
+#define CACHE_PAIRS 50
 
 /* ---- objects ---- */
 enum { OT_MEDKIT, OT_ARMOR, OT_AMMO, OT_W_RIFLE, OT_W_PLASMA, OT_W_GREN, OT_W_ROCKET,
@@ -95,7 +97,7 @@ typedef struct {
 #define D_ALL    63
 
 /* messages */
-enum { MSG_NONE, MSG_FRAGGED, MSG_FRAGGEDBY, MSG_SUICIDE, MSG_RESPAWN, MSG_POWER, MSG_GOT };
+enum { MSG_NONE, MSG_FRAGGED, MSG_FRAGGEDBY, MSG_SUICIDE, MSG_RESPAWN, MSG_POWER, MSG_GOT, MSG_SUDDEN, MSG_SHIELD };
 
 /* ---- globals ---- */
 extern u16 px, py, pa;              /* camera for cast_rays */
@@ -130,6 +132,10 @@ void hand_upload(u8 p);
 
 /* game.c */
 void match_new(void);
+extern u8 shield[2], hit_t[2], hit_dir[2];   /* respawn shield ticks; hit indicator */
+extern u16 time_left;                      /* ticks, 0 = no time limit */
+extern u8 time_limit, sudden_death, bot_skill;
+enum { HIT_LEFT = 1, HIT_RIGHT, HIT_FRONT, HIT_BACK };
 void level_load(u8 lvl);
 void game_tick(u8 n);
 extern u8 level, frag_limit, game_result;
@@ -162,16 +168,11 @@ enum { SFX_BLASTER = 1, SFX_RIFLE, SFX_PLASMA, SFX_GREN, SFX_ROCKET, SFX_FLAME, 
 extern const signed char rayoff[VRAYS];
 extern const unsigned char cosoff[VRAYS];
 extern const unsigned char plane_lut[1024];
-extern const unsigned char sky_tiles[192];
 extern const unsigned char gfx_bank[];
 extern const SprImg * const gfx_tab[];
 extern const unsigned char face_bank[];
 extern const unsigned char * const face_data[];
-extern const unsigned char font_tiles[];
 extern const unsigned char font_map[];
-extern const unsigned char frame_tiles[];
-extern const unsigned char frame_map[768];
-extern const unsigned char level_pals[];
 extern const unsigned char cycle_cols[6];
 extern const unsigned char title_pal[16];
 extern const char * const level_names[];
@@ -184,6 +185,14 @@ extern const unsigned char * const lvl_maps[];
 extern const unsigned char * const lvl_objs[];
 extern const unsigned char * const lvl_spawns[];
 extern const unsigned char hand_tiles[];
+extern const unsigned char sky_tiles[192];
+extern const unsigned char font_tiles[];
+extern const unsigned char frame_tiles[];
+extern const unsigned char sky_edge_tiles[384];   /* sky tiles of view columns 15/16 (divider) */
+extern const unsigned char arrow_tiles[128];
+extern const unsigned char radar_tiles[288];
+extern const unsigned char frame_map[768];         /* HUD layout */
+extern const unsigned char level_pals[];
 extern const unsigned char title_tiles[];
 extern const unsigned short title_map[];
 

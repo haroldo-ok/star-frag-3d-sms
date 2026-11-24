@@ -5,10 +5,11 @@
 #define ANG_BANK 4
 #define TEXBANK0 2
 #define MISC_BANK 5
-#define NFRAME_TILES 8
+#define NFRAME_TILES 11
 #define NTITLE_TILES 334
 #define NLEVELS 4
 #define NSIZES 8
+#define SKYEDGE_BASE 313
 #define NFONT 47
 #define NSKINS 6
 #define NSKINGFX 20

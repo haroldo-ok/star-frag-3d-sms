@@ -25,11 +25,35 @@ person can play alone.
 - skin for player 1 and player 2
 - whether player 2 is a human or the CPU (touching Left/Right on pad 2 makes player 2 human and
   picks its skin)
+- CPU skill: Easy, Normal or Hard
 - arena
 - frag limit: 5, 10, 15, 20 or 30
+- time limit: none, 3, 5 or 10 minutes
 
 The two skins turn slowly on the setup screen, so you can see all 8 rotations. First to the frag
-limit wins. Killing yourself (rockets, grenades) costs a frag.
+limit wins. With a time limit, whoever leads when the clock runs out wins. If the score is level,
+the match goes to **sudden death**: the next frag wins. Killing yourself (rockets, grenades) costs
+a frag.
+
+### Reading the HUD
+
+Each player's half shows:
+- **Face:** shows your health, turns to "ouch" when hit, and grins after a frag.
+- **Stats:** health, armor, weapon and ammo.
+- **Message line:** frags, pickups, sudden death, "PRESS 1" when you can respawn.
+- **Shield / power line:** `SHIELD` while your respawn shield is up, or the overdrive seconds left.
+- **Match clock**, when there is a time limit.
+- **Radar** (bottom right): it turns with you, so up is the way you face. The white arrow is
+  you and the red dot is your opponent, at 1 pixel per half tile. An opponent out of range sits on
+  the radar's edge, so the dot always points toward them.
+- **Hit arrows:** red arrows in the thin strips above and below your view show where the last hit
+  came from:
+  - left or right: arrows at both ends of the strips
+  - front: arrows above the view
+  - behind: arrows below the view
+
+**Respawn shield:** for 1.5 s after (re)spawning you can't be hurt, and you blink in your
+opponent's view. Firing drops the shield straight away, so it can't be used to attack safely.
 
 ### Arenas
 
@@ -66,6 +90,9 @@ Hitscan weapons have a little auto-aim around the centre of the view, which help
 | Ammo crate | ammo for every weapon you own | 10 s |
 | Weapon | the weapon + ammo, and switches to it | 15 s |
 | Overdrive | double damage for 20 s | 40 s |
+
+You don't need to step exactly on an item: walking through its square, or brushing past it
+(within about 2/3 of a tile of its centre), picks it up.
 
 ## Player skins
 
@@ -111,11 +138,19 @@ BSD licence in `tools/doompal.COPYING`). The WAD contains no palette.
   bit and the sprite palette. That palette has floor colours where the BG palette has sky colours,
   so the mirrored sky becomes the floor.
 
+- **Divider bar.** A 4 px bevelled bar (grey, black, black, grey at x = 126-129) separates the two
+  players' views over the full height of the screen, through the HUD and the 3D views. In the HUD
+  it is part of the frame tiles. In the views it is drawn by the renderer: when tile column 15 or
+  16 is uploaded, `out_column` forces those pixels as it converts each row to bit planes, and
+  all-sky cells in those two columns use 12 dedicated sky tiles with the bar painted in. It costs
+  no measurable frame rate.
+
 - **Pre-scaled hardware sprites.** Every opponent frame, item, projectile and effect exists in ROM
   at 8 sizes (8 to 48 px), so 140 graphics take 25 banks. Each frame every object is projected into
   both views and the nearest size is shown with 8x16 sprites from a VRAM cache shared by both
   views. Walls hide sprites per 8 px column using each view's depth buffer. A piece is only shown
-  if it lies entirely inside its own window, so nothing leaks into the other player's view.
+  if it lies entirely inside its own window and off the divider bar, so nothing leaks into the
+  other player's view.
 
 - **Palette rotation.** Entries 13-15 cycle through an energy-blue/violet sequence. This animates:
   - force fields, computer screens and panel lights
@@ -129,9 +164,11 @@ BSD licence in `tools/doompal.COPYING`). The WAD contains no palette.
   per drawn frame. Quick presses and Button 2 taps are latched in the interrupt, so none are lost
   at low frame rates.
 
-- **CPU opponent.** The bot steers with a breadth-first distance field toward you, kept in the
+- **CPU opponent.** Its skill sets how long it takes to fire after first seeing you (about 0.8 s,
+  0.4 s or 0.1 s), how far off-centre it will shoot, and whether it strafes. Times are counted in
+  frames, so they don't depend on the frame rate. The bot steers with a breadth-first distance field toward you, kept in the
   free RAM page under the ray caster (arenas are at most 32 x 22 cells). In sight, it turns to aim,
-  fires, keeps its distance and strafes. It picks its best weapon that has ammo, and it plays by the
+  fires, keeps its distance and (on Normal and Hard) strafes. It picks its best weapon that has ammo, and it plays by the
   same movement and firing rules as a player.
 
 ### Frame rate
@@ -141,10 +178,10 @@ Measured in `smstest` with NTSC 60 Hz timing:
 | situation | frames per second |
 |---|---|
 | both players standing still | 15 |
-| one player walking | 11 |
-| one player turning | 7.4 |
-| both players turning | 5.2 |
-| both walking, turning and firing | 5.0 |
+| one player walking | 11.9 |
+| one player turning | 7.1 |
+| both players turning | 4.9 |
+| both walking, turning and firing | 4.8 |
 
 Turning is the slowest case because every column of that view changes and has to be uploaded.
 Two views mean twice the columns of Splat Trooper's single view. The speed of the game itself
@@ -167,6 +204,9 @@ converted data is already in `gen/`, so `make` only reads the WAD if `tools/gen.
 
     make                 # gen/ (if needed) + star_frag_3d.sms
     tests/run_all.sh     # build + every playtest
+
+A full build takes about a minute. `--max-allocs-per-node 25000` makes SDCC search harder for
+compact code, which saves about 700 bytes. Without it the fixed 32 KB area overflows.
 
 `tools/gen.py` checks every arena when it builds:
 - all spawns and items can be reached from spawn 1
@@ -209,10 +249,10 @@ converted data is already in `gen/`, so `make` only reads the WAD if `tools/gen.
 
 | bank | contents |
 |---|---|
-| 0-1 | code, tables, font, HUD tiles, music, palettes (fixed, ends at 0x7B74) |
+| 0-1 | code, tables, music (fixed, ends at 0x7C25) |
 | 2-3 | wall textures (7 textures x light/dark side) and the row tables for column scaling |
 | 4 | ray-angle records, distance-to-wall-height tables, the sine table |
-| 5 | arenas, first-person weapon tiles, bit-plane lookup table |
+| 5 | arenas, arena palettes, first-person weapon tiles, font, HUD frame tiles and layout, sky tiles, hit arrows, radar background, bit-plane lookup table |
 | 6 | title screen |
 | 7-31 | pre-scaled sprites (140 graphics x 8 sizes) and HUD faces |
 
@@ -222,13 +262,17 @@ converted data is already in `gen/`, so `make` only reads the WAD if `tools/gen.
 |---|---|
 | 0-46 | font (47 glyphs) |
 | 48-53 | sky gradient (mirrored, these are also the floor) |
-| 54-61 | HUD frame (8 tiles) |
+| 54-63 | HUD frame (first 10 of 11 tiles) |
 | 64-255 | the two views: 32 columns x 6 tiles (top half only; the bottom half is mirrored) |
 | 256-271 / 272-287 | player 1 / player 2 hand weapon, 2 frames each |
 | 288-311 | the two HUD faces (3 x 4 tiles each) |
-| 332-447 | sprite cache, 58 tile pairs shared by both views |
+| 312 | HUD frame (11th tile) |
+| 313-324 | sky tiles of view columns 15 and 16, with the divider bar |
+| 325-328 | hit-direction arrows (left, right, front, back) |
+| 329-346 | the two radars (3 x 3 tiles each, redrawn only where the dot moved) |
+| 348-447 | sprite cache, 50 tile pairs shared by both views |
 
-**RAM:** game variables end at 0xCF13. 0xD000-0xD3FF holds squaring tables for the ray caster,
+**RAM:** game variables end at 0xCF46. 0xD000-0xD3FF holds squaring tables for the ray caster,
 0xD400-0xD6BF the bot's 32 x 22 navigation field, 0xD6C0 the DDA code, 0xD700 the column buffer,
 0xD800-0xDBFF the bit-plane lookup table, with the stack at the top.
 
@@ -258,8 +302,9 @@ joypad**. Port 0xDC bits 6-7 and port 0xDD bits 0-3 are wired up, and scripts us
 | walkout | controller only: P1 leaves its spawn and walks |
 | fight | blaster damage; rocket kill; frag counted; respawn |
 | weapons | P2's pad picks a skin and moves/turns P2; all 7 weapons fire and use ammo; Button 2 tap cycles weapons |
-| items | medkit, armor, weapon pickup and auto-switch, item respawn, overdrive |
+| items | medkit, armor, weapon pickup and auto-switch, item respawn, overdrive, pickup reach (0.6 tiles to the side: yes; 0.8: no) |
 | bot | the CPU opponent finds and frags an idle player |
+| features | CPU skill option; respawn shield (blocks damage, dropped by firing); hit arrows from the right and from behind; radar dot ahead and to the right; time limit: sudden death on a tie, win on time with a lead |
 | flow | all 4 arenas load; a real frag-limit win; results; back to the menu |
 | pause | console pause freezes play; the PSG is written |
 | gallery | every skin seen from 8 sides (screenshots) |

@@ -4,7 +4,7 @@ run 60
 tap 1
 waituntil game_state == 1 300 w1
 run 30
-poke menu_sel 5 w1
+poke menu_sel 7 w1
 run 2
 tap 1
 waituntil game_state == 2 600 w1
@@ -51,3 +51,29 @@ poke pl+0 0x0680
 poke pl+2 0x0B80
 run 20
 expect pl+24 > 1000
+# easy pickup: walking past an item 0.6 tiles to the side still collects it.
+# armor at (21,2): walk east along y = 2.5 + 0.6 tiles, past it
+poke pl+7 0 w1
+poke pl+0 0x1380
+poke pl+2 0x0319
+poke pl+4 0
+run 700
+poke pl+7 0 w1
+poke pl+0 0x1380
+poke pl+2 0x0319
+hold up
+run 90
+hold none
+run 4
+expect pl+7 == 50 w1
+# but not 0.8 tiles to the side
+poke pl+7 0 w1
+run 700
+poke pl+7 0 w1
+poke pl+0 0x1380
+poke pl+2 0x0350
+hold up
+run 90
+hold none
+run 4
+expect pl+7 == 0 w1

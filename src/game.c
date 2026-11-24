@@ -6,6 +6,11 @@ u8 map[1024];
 Obj objs[MAXOBJ];
 Player pl[2];
 u8 level, frag_limit = 10, game_result;
+u8 shield[2], hit_t[2], hit_dir[2];  /* respawn shield ticks; hit-direction indicator */
+u16 time_left;                       /* match clock in ticks (0: no time limit) */
+u8 time_limit, sudden_death, bot_skill = 1;   /* NORMAL */
+static u16 dmg_sx, dmg_sy;           /* where the current damage comes from */
+#define SHIELD_TICKS 90              /* 1.5 s of protection after respawning */
 u8 shake;
 static u8 tn;                 /* ticks covered by this update */
 static u8 tickno;
@@ -20,6 +25,7 @@ static u16 rng = 0x1234;
 #define K_1 16
 #define K_2 32
 #define PRAD 0x50
+#define PICK_R 0xB0          /* item pickup reach (was 0x70) */
 
 /*                              BLASTER PULSE PLASMA GREN ROCKET FLAMER RAIL */
 static const u8 w_cool[]    = { 16,     6,    9,     36,  42,    4,     70 };
@@ -141,6 +147,8 @@ void spawn_player(u8 p, u8 avoid_other)
     P->weapon = W_BLASTER; P->owned = 1;
     for (i = 0; i < NWEAPONS; i++) P->ammo[i] = 0;
     P->power = 0; P->dead = 0;
+    shield[p] = SHIELD_TICKS;
+    hit_t[p] = 0;
     P->cool = 10; P->wframe = 0; P->bob = 0;
     P->ouch = P->grin = P->attack_t = P->pain_t = 0;
     P->dirty = D_ALL;
@@ -191,6 +199,8 @@ void match_new(void)
     spawn_player(0, 0);
     spawn_player(1, 1);
     for (p = 0; p < MAXOBJ; p++) if (objs[p].type == OT_TFOG) objs[p].type = OT_NONE;
+    time_left = (u16)time_limit * 3600;
+    sudden_death = 0;
 }
 
 void message(u8 p, u8 m)
@@ -217,7 +227,7 @@ void kill(u8 q, u8 a)
         pl[a].dirty |= D_FACE;
         message(a, MSG_FRAGGED);
         message(q, MSG_FRAGGEDBY);
-        if (pl[a].frags >= (s8)frag_limit && !game_result) game_result = a + 1;
+        if ((pl[a].frags >= (s8)frag_limit || sudden_death) && !game_result) game_result = a + 1;
     }
     pl[0].dirty |= D_FRAGS;
     pl[1].dirty |= D_FRAGS;
@@ -226,8 +236,19 @@ void kill(u8 q, u8 a)
 void damage(u8 q, u8 a, u8 dmg)
 {
     Player *Q = &pl[q];
-    if (Q->dead || !dmg) return;
+    if (Q->dead || !dmg || shield[q]) return;
     if (pl[a].power && a != q) dmg = dmg > 127 ? 255 : dmg * 2;
+    /* which side the hit came from, relative to where the victim faces */
+    {
+        s16 dep, lat;
+        set_proj_angle(Q->a);
+        pj_dx = dmg_sx - Q->x; pj_dy = dmg_sy - Q->y;
+        project();
+        dep = pj_depth; lat = pj_lat;
+        if ((lat < 0 ? -lat : lat) > (dep < 0 ? -dep : dep)) hit_dir[q] = lat > 0 ? HIT_RIGHT : HIT_LEFT;
+        else hit_dir[q] = dep >= 0 ? HIT_FRONT : HIT_BACK;
+        hit_t[q] = 60;
+    }
     if (Q->armor) {
         u8 save = dmg - dmg / 3;
         if (save > Q->armor) save = Q->armor;
@@ -254,6 +275,7 @@ void explode(Obj *o)
         if (d < 0x200 && los(o->x, o->y, Q->x, Q->y)) {
             u8 dmg = (u8)(((u16)o->dmg * (0x200 - d)) >> 9);
             if (q == o->owner) dmg >>= 1;
+            dmg_sx = o->x; dmg_sy = o->y;
             damage(q, o->owner, dmg);
         }
     }
@@ -317,6 +339,7 @@ void hitscan(u8 p, u8 dmg, u8 rail)
             los(P->x, P->y, Q->x, Q->y)) {
             hit = 1;
             hitd = depth;
+            dmg_sx = P->x; dmg_sy = P->y;
             damage(p ^ 1, p, dmg);
         }
     }
@@ -366,6 +389,7 @@ void fire(u8 p)
         P->ammo[w]--;
     }
     P->cool = w_cool[w];
+    if (shield[p]) { shield[p] = 0; P->dirty |= D_MSG; }   /* firing drops the shield */
     P->wframe = 1;
     P->attack_t = 8;
     P->dirty |= D_WEAPON;
@@ -411,9 +435,11 @@ void projectile_tick(Obj *o)
             dx = (s16)(Q->x - o->x); dy = (s16)(Q->y - o->y);
             if (dx > -0x48 && dx < 0x48 && dy > -0x48 && dy < 0x48) {
                 if (o->type == OT_ROCKET || o->type == OT_GRENADE) {
+                    dmg_sx = o->x - o->vx * 4; dmg_sy = o->y - o->vy * 4;
                     damage(q, o->owner, o->dmg >> 2);
                     explode(o);
                 } else {
+                    dmg_sx = o->x - o->vx * 4; dmg_sy = o->y - o->vy * 4;
                     damage(q, o->owner, o->dmg);
                     if (o->type == OT_PLASMA) { o->type = OT_SPARK; o->timer = 10; }
                     else o->type = OT_NONE;
@@ -485,11 +511,13 @@ void item_tick(Obj *o)
     for (p = 0; p < 2; p++) {
         Player *P;
         s16 dx, dy;
-        /* items sit mid-cell and are picked up within 0x70: same or next cell only */
+        /* items sit mid-cell and are picked up within PICK_R (0.69 tile): walking
+           anywhere through the item's cell, or brushing past it, is enough.
+           Only the same or a neighbouring cell can be that close. */
         if ((u8)(pcx[p] - ox + 1) > 2 || (u8)(pcy[p] - oy + 1) > 2) continue;
         P = &pl[p];
         dx = (s16)(P->x - o->x); dy = (s16)(P->y - o->y);
-        if (dx > -0x70 && dx < 0x70 && dy > -0x70 && dy < 0x70) {
+        if (dx > -PICK_R && dx < PICK_R && dy > -PICK_R && dy < PICK_R) {
             pickup(P, p, o);
             if (o->state) return;
         }
@@ -577,6 +605,24 @@ void game_tick(u8 n)
     tn = n;
     tickno += n;
     shake = dec_sat(shake, n);
+    for (i = 0; i < 2; i++) {
+        if (shield[i]) { shield[i] = dec_sat(shield[i], n); if (!shield[i]) pl[i].dirty |= D_MSG; }
+        hit_t[i] = dec_sat(hit_t[i], n);
+    }
+    /* match clock: at zero the leader wins; a tie goes to sudden death */
+    if (time_left && !game_result) {
+        if (time_left > n) time_left -= n;
+        else {
+            time_left = 0;
+            if (pl[0].frags != pl[1].frags) game_result = pl[0].frags > pl[1].frags ? 1 : 2;
+            else {
+                sudden_death = 1;
+                message(0, MSG_SUDDEN);
+                message(1, MSG_SUDDEN);
+                sfx(SFX_POWER);
+            }
+        }
+    }
     player_tick(0);
     player_tick(1);
     for (i = 0; i < 2; i++) {

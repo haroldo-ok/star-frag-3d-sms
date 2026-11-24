@@ -305,11 +305,58 @@ def gen_tables():
         for idx in range(256):
             l, r = idx >> 4, idx & 15
             lut.append((0xF0 if (l >> p) & 1 else 0) | (0x0F if (r >> p) & 1 else 0))
+    return s
+
+def gen_sky_tiles():
     sky = []
     for r in range(6):
         sky += tile_bytes([[sky_index(r * 8 + y)] * 8 for y in range(8)])
-    s += c_array('sky_tiles', sky, 'unsigned char', 32)
-    return s
+    return c_array('sky_tiles', sky, 'unsigned char', 32)
+
+def gen_arrow_tiles():
+    """hit-direction arrows on the HUD strip colours: left, right, up (front), down (back)"""
+    shapes = {
+        'L': ["...XX...", "..XX....", ".XXXXXX.", "XXXXXXX.", ".XXXXXX.", "..XX....", "...XX...", "........"],
+        'U': ["...X....", "..XXX...", ".XXXXX..", "XXXXXXX.", "..XXX...", "..XXX...", "..XXX...", "........"],
+    }
+    def grid(rows):
+        out = [[DGREY] * 8 for _ in range(8)]
+        on = {(x, y) for y, r in enumerate(rows) for x, ch in enumerate(r) if ch == 'X'}
+        for (x, y) in on:
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    if 0 <= x + dx < 8 and 0 <= y + dy < 8 and (x + dx, y + dy) not in on:
+                        out[y + dy][x + dx] = BLACK
+        for (x, y) in on:
+            out[y][x] = RED if y in (0, 1, 2, 3) or x in (0, 1, 2, 3) else RED
+        return out
+    L = shapes['L']
+    R = [r[::-1] for r in L]
+    R = ["." + r[:-1] for r in R]          # keep the 7 px shape inside the tile
+    U = shapes['U']
+    D = U[:7][::-1] + ["........"]
+    out = []
+    for g in (L, R, U, D):
+        out += tile_bytes(grid(g))
+    return c_array('arrow_tiles', out)
+
+RADAR = 24       # radar box, px (3 x 3 tiles)
+
+def radar_base():
+    img = [[BLACK] * RADAR for _ in range(RADAR)]
+    for i in range(RADAR):
+        img[0][i] = img[RADAR - 1][i] = img[i][0] = img[i][RADAR - 1] = LGREY
+    for i in range(2, RADAR - 2, 2):
+        img[12][i] = DKGREEN
+        img[i][12] = DKGREEN
+    # you: a small white arrow at the centre pointing up (forward)
+    for (x, y) in ((12, 10), (11, 11), (12, 11), (13, 11), (12, 12), (12, 13)):
+        img[y][x] = WHITE
+    out = []
+    for ty in range(3):
+        for tx in range(3):
+            out += tile_bytes([img[ty * 8 + y][tx * 8:tx * 8 + 8] for y in range(8)])
+    return out
 
 def gen_angbank():
     b = bytearray(16384)
@@ -789,6 +836,21 @@ def draw_text_img(img, x, y, text, fg, ol=BLACK):
 # ------------------------------------------------------------------ HUD frame
 VIEW_TY = 2
 FACE_TY = 15
+# the bar between the two views: screen x -> colour (grey, black | black, grey)
+DIVIDER = [(126, LGREY), (127, BLACK), (128, BLACK), (129, LGREY)]
+
+def sky_edge_tiles():
+    """sky tiles for view columns 15 and 16 with the divider painted in"""
+    out = []
+    for tc in (15, 16):
+        for r in range(6):
+            px = [[sky_index(r * 8 + y)] * 8 for y in range(8)]
+            for x, c in DIVIDER:
+                if x // 8 == tc:
+                    for y in range(8):
+                        px[y][x % 8] = c
+            out += tile_bytes(px)
+    return out
 
 def gen_frame():
     img = Image.new('L', (256, 192), HUD_BG)
@@ -802,10 +864,10 @@ def gen_frame():
             d.point((x + 1, yy + 1), fill=BLACK)
         for x in range(10, 256, 16):
             d.rectangle([x, y0 + 2, x + 3, y0 + 4], fill=YELLOW if y0 == 8 else CYC_A)
-    # divider between the two HUD halves
-    d.rectangle([127, 120, 128, 191], fill=BLACK)
-    d.rectangle([126, 120, 126, 191], fill=LGREY)
-    d.rectangle([127, 0, 128, 7], fill=BLACK)
+    # divider between the two players' halves, full height (the renderer draws
+    # the same bar through the 3D views: see DIVIDER below and out_column)
+    for x, c in DIVIDER:
+        d.rectangle([x, 0, x, 191], fill=c)
     px = img.load()
     tiles, index, tmap = [], {}, []
     for ty in range(24):
@@ -822,7 +884,7 @@ def gen_frame():
                 index[blk] = len(tiles)
                 tiles.append(blk)
             tmap.append(index[blk])
-    assert len(tiles) <= 30, len(tiles)
+    assert len(tiles) <= 20, len(tiles)
     return tiles, tmap, img
 
 # ------------------------------------------------------------------ title screen
@@ -998,6 +1060,21 @@ def main():
     misc += 'const unsigned char * const lvl_spawns[%d] = {%s};\n' % (len(lv), ','.join('lvl%d_spawns' % i for i in range(len(lv))))
     misc += c_array('hand_tiles', gen_hands())
     misc += gen_plane_lut()
+    misc += gen_sky_tiles()
+    misc += gen_arrow_tiles()
+    misc += c_array('radar_tiles', radar_base())
+    # screen-setup tiles live here too (loaded with the display off)
+    ftiles, fmap, fimg = gen_frame()
+    font, cmap = gen_font()
+    misc += c_array('font_tiles', font)
+    misc += c_array('frame_tiles', [b for t in ftiles for b in tile_bytes(t)])
+    misc += c_array('sky_edge_tiles', sky_edge_tiles())
+    misc += c_array('frame_map', fmap, 'unsigned char', 32)
+    pal_bytes = []
+    for L in range(len(ARENAS)):
+        for which in range(2):
+            pal_bytes += [smsc(*c) for c in full_palette(L, which)]
+    misc += c_array('level_pals', pal_bytes)
     write('miscbank.c', misc)
 
     tt, tm, timg = gen_title()
@@ -1053,18 +1130,13 @@ def main():
 
     # --- fixed-bank assets
     ftiles, fmap, fimg = gen_frame()
+    # frame tiles past the first 10 go to 256+SAT_FRAME(56); the 12 divider sky tiles follow
+    skyedge = 256 + 56 + max(0, len(ftiles) - 10)
+    assert skyedge + 12 <= 256 + 69, 'divider sky tiles overlap the arrow/radar tiles'
     font, cmap = gen_font()
     fx = '#include "../src/defs.h"\n'
-    fx += c_array('font_tiles', font)
     fx += c_array('font_map', cmap)
-    fx += c_array('frame_tiles', [b for t in ftiles for b in tile_bytes(t)])
-    fx += c_array('frame_map', fmap, 'unsigned char', 32)
     fx += gen_music()
-    pal_bytes = []
-    for L in range(len(ARENAS)):
-        for which in range(2):
-            pal_bytes += [smsc(*c) for c in full_palette(L, which)]
-    fx += c_array('level_pals', pal_bytes)
     fx += c_array('cycle_cols', [smsc(*c) for c in CYCLE])
     fx += c_array('title_pal', [smsc(*c) for c in TITLE_PAL])
     fx += 'const char * const level_names[%d] = {%s};\n' % (len(lv), ''.join('"%s",' % n for (n, _, _, _) in lv))
@@ -1077,6 +1149,9 @@ def main():
         TITLE_BANK, ANG_BANK, TEXBANK0, MISC_BANK)
     h += '#define NFRAME_TILES %d\n#define NTITLE_TILES %d\n#define NLEVELS %d\n#define NSIZES %d\n' % (
         len(ftiles), len(tt), len(lv), len(SIZES))
+    h += '#define SKYEDGE_BASE %d\n' % skyedge
+    with open(os.path.join(OUT, 'assets.inc'), 'a') as f:
+        f.write('SKYEDGE_LO = %d\n' % (skyedge - 256))
     h += '#define NFONT %d\n#define NSKINS %d\n#define NSKINGFX %d\n#define NGRAPHICS %d\n' % (
         len(FONT_CHARS), len(SKINS), NSKINGFX, len(gnames))
     for i, (nm, _) in enumerate(ITEM_GFX):

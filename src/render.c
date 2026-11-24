@@ -35,6 +35,7 @@ void render_init(void)
         *d++ = *s++;
     ray_init();
     qsq_init();
+    SMS_mapROMBank(MISC_BANK);
     SMS_loadTiles(sky_tiles, SKY_BASE, 192);
     render_invalidate();
 }

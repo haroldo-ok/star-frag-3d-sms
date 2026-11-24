@@ -1,0 +1,109 @@
+# features: CPU skill option, respawn shield, hit-direction arrows, radar,
+# time limit with sudden death and with a leader
+symbols build/game.noi
+run 60
+tap 1
+waituntil game_state == 1 300 w1
+run 30
+# CPU SKILL: NORMAL -> HARD
+expect bot_skill == 1 w1
+poke menu_sel 3 w1
+run 2
+tap right
+run 5
+expect bot_skill == 2 w1
+poke bot_skill 1 w1
+poke menu_sel 7 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+poke opt_cpu 0 w1
+poke pl+93 0 w1
+# both players start shielded
+expect shield+0 > 0 w1
+expect shield+1 > 0 w1
+# P1 at (4.5,3.5), P2 3 tiles east, facing each other
+poke pl+0 0x0480
+poke pl+2 0x0380
+poke pl+4 0
+poke pl+47 0x0780
+poke pl+49 0x0380
+poke pl+51 512
+run 10
+# shots bounce off the shield...
+hold p21
+run 20
+hold none
+expect pl+6 == 100 w1
+# ...and firing drops your own shield
+expect shield+1 == 0 w1
+run 80
+expect shield+0 == 0 w1
+# radar: the opponent 3 tiles straight ahead -> dot above centre
+run 20
+print dot_x+0 w1
+print dot_y+0 w1
+expect dot_x+0 == 11 w1
+expect dot_y+0 < 7 w1
+# P1 turns to face north: P2 (east) is now on P1's right
+poke pl+4 768
+run 20
+expect dot_x+0 > 15 w1
+# hit from the right (P1 faces north, P2 to the east fires west)
+hold p21
+run 12
+hold none
+run 4
+expect pl+6 < 100 w1
+expect hit_dir+0 == 2 w1
+expect arrow_shown+0 == 2 w1
+screenshot shots/feat_right.ppm
+# hit from behind (P1 faces west, away from P2)
+poke pl+4 512
+poke pl+6 100 w1
+run 70
+expect arrow_shown+0 == 0 w1
+hold p21
+run 12
+hold none
+run 4
+expect hit_dir+0 == 4 w1
+expect arrow_shown+0 == 4 w1
+screenshot shots/feat_back.ppm
+# time limit: clock shown; tie at 0:00 -> sudden death, next frag wins
+poke time_limit 1 w1
+poke time_left 200
+run 30
+screenshot shots/feat_clock.ppm
+run 200
+expect time_left == 0
+expect sudden_death == 1 w1
+expect game_result == 0 w1
+screenshot shots/feat_sudden.ppm
+poke pl+4 0
+poke pl+9 0x41 w1
+poke pl+16 5 w1
+poke pl+8 6 w1
+poke pl+34 63 w1
+poke pl+53 10 w1
+run 20
+hold 1
+run 20
+hold none
+expect game_result == 1 w1
+waituntil game_state == 3 900 w1
+run 70
+tap 1
+waituntil game_state == 1 600 w1
+run 30
+# a leader when the clock runs out wins on time
+poke menu_sel 7 w1
+run 2
+tap 1
+waituntil game_state == 2 600 w1
+poke time_limit 1 w1
+poke pl+64 2 s8
+poke time_left 60
+run 120
+expect game_result == 2 w1
+waituntil game_state == 3 900 w1

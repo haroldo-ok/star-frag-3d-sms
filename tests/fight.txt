@@ -8,7 +8,7 @@ poke menu_sel 2 w1
 run 2
 tap right
 run 5
-poke menu_sel 5 w1
+poke menu_sel 7 w1
 run 2
 tap 1
 waituntil game_state == 2 600 w1
@@ -22,6 +22,9 @@ poke pl+49 0x0380
 poke pl+51 512
 run 30
 screenshot shots/f0.ppm
+# wait out the respawn shield both players start with
+run 70
+expect shield+1 == 0 w1
 hold 1
 run 40
 hold none

@@ -2,7 +2,7 @@
 DK      ?= $(HOME)/.devkitsms
 CC      = sdcc
 AS      = sdasz80
-CFLAGS  = -mz80 -I$(DK)/include -Isrc --peep-file $(DK)/include/peep-rules.txt --opt-code-size
+CFLAGS  = -mz80 -I$(DK)/include -Isrc --peep-file $(DK)/include/peep-rules.txt --opt-code-size --max-allocs-per-node 25000
 OUT     = build
 ROM     = star_frag_3d.sms
 export PATH := $(DK)/bin:$(PATH)

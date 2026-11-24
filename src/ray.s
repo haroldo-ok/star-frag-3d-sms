@@ -25,7 +25,7 @@ NT_BOT    = 0x7B40          ; ... of cell (0,13)
 
 	.globl _pa, _px, _py, _map, _zbuf, _cosoff, _rayoff
 	.globl _rd_bank, _rd_l, _rd_y0, _rd_rows, _rd_vaddr
-	.globl _draw_left, _draw_right, _out_column, _mul8
+	.globl _draw_left, _draw_right, _out_column, _mul8, _oc_tc
 
 	.area _DATA
 _ray::		.ds 256		; 64 x {k, l, bank, side}
@@ -35,6 +35,7 @@ _nt_state::	.ds 192		; 32 x 6: 0 sky / 1 wall tile
 _ray_base::	.ds 1
 _dv_first::	.ds 1
 cr_n:		.ds 1
+nt_hi:		.ds 1
 dv_end:		.ds 1
 ;dda_ram is at a fixed address (0xD6C0, below COLBUF)
 cr_i:		.ds 1
@@ -677,6 +678,8 @@ dv_loop:
 	add	hl,hl
 	set	6,h
 	ld	(_rd_vaddr),hl
+	ld	a,(dv_tc)
+	ld	(_oc_tc),a
 	call	_out_column
 dv_nt:
 	; name-table cells: rows < r0 -> sky tile, rows >= r0 -> column tile
@@ -721,6 +724,10 @@ dv_next:
 
 ; A = want (0 sky / 1 wall), B = r ; uses dv_tc
 nt_cell:
+	ld	c,a
+	xor	a
+	ld	(nt_hi),a
+	ld	a,c
 	or	a
 	jr	z,40$
 	ld	a,(dv_tc)
@@ -731,7 +738,22 @@ nt_cell:
 	add	a,b
 	add	a,#VIEW_BASE
 	jr	41$
-40$:	ld	a,b
+40$:	ld	a,(dv_tc)		; columns 15/16 carry the divider bar
+	sub	#15
+	cp	#2
+	jr	nc,45$
+	ld	c,a
+	add	a,a
+	add	a,c
+	add	a,a			; 0 or 6
+	add	a,b
+	add	a,#SKYEDGE_LO
+	ld	c,a
+	ld	a,#1			; tile number >= 256
+	ld	(nt_hi),a
+	ld	a,c
+	jr	41$
+45$:	ld	a,b
 	add	a,#SKY_BASE
 41$:	push	af			; tile
 	; top: NT_TOP + r*64 + tc*2
@@ -752,9 +774,10 @@ nt_cell:
 	ld	de,#NT_TOP
 	add	hl,de
 	pop	de			; de = r*64 + tc*2
+	ld	a,(nt_hi)
+	ld	c,a
 	pop	af
 	push	af
-	ld	c,#0
 	push	de
 	call	nt_write
 	pop	de
@@ -778,6 +801,8 @@ nt_cell:
 	pop	hl
 	or	a
 	sbc	hl,de
+	ld	a,(nt_hi)
+	or	#0x0C			; flip Y + sprite palette
+	ld	c,a
 	pop	af
-	ld	c,#0x0C			; flip Y + sprite palette
 	jp	nt_write

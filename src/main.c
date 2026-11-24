@@ -86,23 +86,33 @@ static void title_screen(void)
     sfx(SFX_RESPAWN);
 }
 
+/* font + HUD frame tiles (kept in MISC_BANK, loaded with the display off) */
+static void load_ui_tiles(void)
+{
+    SMS_mapROMBank(MISC_BANK);
+    SMS_loadTiles(font_tiles, FONT_BASE, NFONT * 32);
+    SMS_loadTiles(frame_tiles, FRAME_BASE, (NFRAME_TILES > 10 ? 10 : NFRAME_TILES) * 32);
+    if (NFRAME_TILES > 10)
+        SMS_loadTiles(frame_tiles + 10 * 32, 256 + SAT_FRAME, (NFRAME_TILES - 10) * 32);
+}
+
 /* ------------------------------------------------------------ text screens */
 static void text_screen(void)
 {
     u16 i;
     SMS_displayOff();
     SMS_setSpriteMode(SPRITEMODE_TALL);
-    SMS_loadTiles(font_tiles, FONT_BASE, NFONT * 32);
-    SMS_loadTiles(frame_tiles, FRAME_BASE, (NFRAME_TILES > 10 ? 10 : NFRAME_TILES) * 32);
-    if (NFRAME_TILES > 10)
-        SMS_loadTiles(frame_tiles + 10 * 32, 256 + SAT_FRAME, (NFRAME_TILES - 10) * 32);
+    load_ui_tiles();
+    SMS_mapROMBank(MISC_BANK);
     SMS_loadBGPalette(&level_pals[0]);
     SMS_loadSpritePalette(&level_pals[16]);
     SMS_setBackdropColor(HUD_BG_COL);
     SMS_setNextTileatXY(0, 0);
     for (i = 0; i < 768; i++) {
-        u8 y = i >> 5;
-        u8 v = frame_map[(y == 1 || y == 22) ? (i & 31) + 32 : 0];
+        u8 y = i >> 5, x = i & 31;
+        u8 v;
+        if (x == 15 || x == 16) x -= 2;     /* menus: the strip without the divider */
+        v = frame_map[(y == 1 || y == 22) ? x + 32 : 0];
         SMS_setTile(v < 10 ? FRAME_BASE + v : 256 + SAT_FRAME + v - 10);
     }
     no_sprites();
@@ -120,8 +130,8 @@ static void opt_line(u8 row, const char *label, const char *val, u8 sel)
 {
     char buf[16];
     u8 i = 0;
-    print_at(2, row, sel ? ">" : " ");
-    print_at(4, row, label);
+    print_at(1, row, sel ? ">" : " ");
+    print_at(3, row, label);
     buf[0] = '<';
     while (val[i] && i < 13) { buf[i + 1] = val[i]; i++; }
     while (i < 13) buf[++i] = ' ';
@@ -131,6 +141,11 @@ static void opt_line(u8 row, const char *label, const char *val, u8 sel)
 }
 
 static const char * const cpu_names[] = { "HUMAN", "CPU" };
+static const char * const skill_names[] = { "EASY", "NORMAL", "HARD" };
+static const char * const time_names[] = { "NONE", "3 MIN", "5 MIN", "10 MIN" };
+static const u8 time_mins[] = { 0, 3, 5, 10 };
+static u8 time_idx;
+#define MENU_START 7
 static const u8 limits[] = { 5, 10, 15, 20, 30 };
 static u8 lim_idx = 1;
 
@@ -138,13 +153,16 @@ static void menu_draw(void)
 {
     char num[3];
     num[0] = '0' + limits[lim_idx] / 10; num[1] = '0' + limits[lim_idx] % 10; num[2] = 0;
+    /* grouped: skins / opponent / match rules / start */
     opt_line(5, "PLAYER 1", skin_names[opt_skin[0]], menu_sel == 0);
-    opt_line(7, "PLAYER 2", skin_names[opt_skin[1]], menu_sel == 1);
-    opt_line(9, "PLAYER 2 IS", cpu_names[opt_cpu], menu_sel == 2);
-    opt_line(11, "ARENA", level_names[level], menu_sel == 3);
-    opt_line(13, "FRAG LIMIT", num, menu_sel == 4);
-    print_at(2, 15, menu_sel == 5 ? ">" : " ");
-    print_at(4, 15, "START MATCH");
+    opt_line(6, "PLAYER 2", skin_names[opt_skin[1]], menu_sel == 1);
+    opt_line(8, "PLAYER 2 IS", cpu_names[opt_cpu], menu_sel == 2);
+    opt_line(9, "CPU SKILL", opt_cpu ? skill_names[bot_skill] : "-", menu_sel == 3);
+    opt_line(11, "ARENA", level_names[level], menu_sel == 4);
+    opt_line(12, "FRAG LIMIT", num, menu_sel == 5);
+    opt_line(13, "TIME LIMIT", time_names[time_idx], menu_sel == 6);
+    print_at(1, 15, menu_sel == MENU_START ? ">" : " ");
+    print_at(3, 15, "START MATCH");
 }
 
 static void menu_screen(void)
@@ -175,16 +193,18 @@ static void menu_screen(void)
         t++;
         if ((t & 7) == 0) { if (++cyc_ph == 6) cyc_ph = 0; set_cycle(); }
         k = pad_press[0];
-        if (k & PORT_A_KEY_UP) { menu_sel = menu_sel ? menu_sel - 1 : 5; dirty = 1; }
-        if (k & PORT_A_KEY_DOWN) { menu_sel = menu_sel == 5 ? 0 : menu_sel + 1; dirty = 1; }
+        if (k & PORT_A_KEY_UP) { menu_sel = menu_sel ? menu_sel - 1 : MENU_START; dirty = 1; }
+        if (k & PORT_A_KEY_DOWN) { menu_sel = menu_sel == MENU_START ? 0 : menu_sel + 1; dirty = 1; }
         if (k & (PORT_A_KEY_LEFT | PORT_A_KEY_RIGHT)) {
             u8 r = (k & PORT_A_KEY_RIGHT) ? 1 : 0;
             switch (menu_sel) {
             case 0: case 1: opt_skin[menu_sel] = r ? (opt_skin[menu_sel] + 1) % NSKINS
                                                    : (opt_skin[menu_sel] + NSKINS - 1) % NSKINS; break;
             case 2: opt_cpu ^= 1; break;
-            case 3: level = r ? (level + 1) % NLEVELS : (level + NLEVELS - 1) % NLEVELS; break;
-            case 4: lim_idx = r ? (lim_idx + 1) % 5 : (lim_idx + 4) % 5; break;
+            case 3: bot_skill = r ? (bot_skill + 1) % 3 : (bot_skill + 2) % 3; break;
+            case 4: level = r ? (level + 1) % NLEVELS : (level + NLEVELS - 1) % NLEVELS; break;
+            case 5: lim_idx = r ? (lim_idx + 1) % 5 : (lim_idx + 4) % 5; break;
+            case 6: time_idx = r ? (time_idx + 1) % 4 : (time_idx + 3) % 4; break;
             }
             dirty = 1;
         }
@@ -196,13 +216,14 @@ static void menu_screen(void)
         }
         if (dirty) sfx(SFX_MENU);
         if (k & PORT_A_KEY_1) {
-            if (menu_sel == 5) break;
+            if (menu_sel == MENU_START) break;
             menu_sel++;
             dirty = 1;
         }
         clear_press();
     }
     frag_limit = limits[lim_idx];
+    time_limit = time_mins[time_idx];
     music_stop();
     sfx(SFX_RESPAWN);
 }
@@ -235,11 +256,12 @@ static void game_screen(void)
     u16 i;
     SMS_displayOff();
     SMS_setSpriteMode(SPRITEMODE_TALL);
-    SMS_loadTiles(font_tiles, FONT_BASE, NFONT * 32);
-    SMS_loadTiles(frame_tiles, FRAME_BASE, (NFRAME_TILES > 10 ? 10 : NFRAME_TILES) * 32);
-    if (NFRAME_TILES > 10)
-        SMS_loadTiles(frame_tiles + 10 * 32, 256 + SAT_FRAME, (NFRAME_TILES - 10) * 32);
+    load_ui_tiles();
     render_init();
+    SMS_mapROMBank(MISC_BANK);
+    SMS_loadTiles(sky_edge_tiles, SKYEDGE_BASE, 384);
+    SMS_loadTiles(arrow_tiles, 256 + SAT_ARROW, 128);
+    SMS_mapROMBank(MISC_BANK);
     SMS_setNextTileatXY(0, 0);
     for (i = 0; i < 768; i++) {
         u8 v = frame_map[i];
@@ -248,6 +270,7 @@ static void game_screen(void)
         else t = (v < 10 ? FRAME_BASE + v : 256 + SAT_FRAME + v - 10) | TILE_PRIORITY;
         SMS_setTile(t);
     }
+    SMS_mapROMBank(MISC_BANK);
     SMS_loadBGPalette(&level_pals[level * 32]);
     SMS_loadSpritePalette(&level_pals[level * 32 + 16]);
     SMS_setBackdropColor(HUD_BG_COL);
@@ -273,6 +296,7 @@ static void do_pause(void)
     {
         /* restore the strip under the text */
         u8 x;
+        SMS_mapROMBank(MISC_BANK);
         SMS_setNextTileatXY(13, 1);
         for (x = 13; x < 19; x++) {
             u8 v = frame_map[32 + x];
@@ -319,7 +343,7 @@ static void play_match(void)
 
 static void results_screen(void)
 {
-    u8 w = game_result - 1, t;
+    u8 w = game_result - 1, t, start, ready = 0;
     game_state = 3;
     text_screen();
     sprites_init();
@@ -338,6 +362,7 @@ static void results_screen(void)
     SMS_displayOn();
     music_play(mus_win_a, mus_win_b, 0);
     clear_press();
+    start = vbl_count;
     for (t = 0; ; t++) {
         u8 rot = (t >> 3) & 7;
         SMS_initSprites();
@@ -348,8 +373,9 @@ static void results_screen(void)
         SMS_copySpritestoSAT();
         frame_no++;
         if ((t & 7) == 0) { if (++cyc_ph == 6) cyc_ph = 0; set_cycle(); }
-        if (t > 60 && ((pad_press[0] | pad_press[1]) & PORT_A_KEY_1)) break;
-        if (t == 255) t = 61;
+        /* ignore buttons for the first second (timed in frames, not loop passes) */
+        if (!ready && (u8)(vbl_count - start) > 60) ready = 1;
+        if (ready && ((pad_press[0] | pad_press[1]) & PORT_A_KEY_1)) break;
         clear_press();
     }
 }
